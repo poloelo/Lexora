@@ -1,5 +1,4 @@
 services:
-
   backend:
     build:
       context: .
@@ -10,7 +9,7 @@ services:
     environment:
       - PORT=3000
       - DB_PATH=/app/data/lexora.db
-      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://ollama:11434
       # Surchargez ADMIN_KEY et OLLAMA_MODEL via un fichier .env ou une variable d'env
       # ADMIN_KEY=votre-cle-secrete
       # OLLAMA_MODEL=llama3.2
@@ -20,8 +19,8 @@ services:
       # Sans ce volume, tous les fichiers sont perdus au redémarrage du conteneur
       # alors que leurs métadonnées restent en base SQLite → incohérence.
       - uploads-data:/app/uploads
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ollama
     restart: unless-stopped
 
   frontend:
@@ -35,8 +34,28 @@ services:
       - backend
     restart: unless-stopped
 
+  # Assistant IA — LLM local, remplace l'installation manuelle sur l'hôte.
+  # Le nom du service ("ollama") sert de nom d'hôte dans le réseau Docker
+  # Compose interne : c'est pour ça que le backend l'appelle via
+  # http://ollama:11434 et non plus host.docker.internal.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lexora-ollama
+    ports:
+      # Exposé sur l'hôte uniquement pour debug manuel (curl, ollama pull
+      # depuis l'extérieur si besoin) — le backend, lui, passe par le réseau
+      # Docker interne et n'a pas besoin de ce port publié.
+      - "11434:11434"
+    volumes:
+      # Persiste les modèles téléchargés (plusieurs Go) : sans ce volume,
+      # "ollama pull llama3.2" serait à refaire à chaque "docker compose down".
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   # Persistance de la base SQLite
   sqlite-data:
   # Persistance des fichiers uploadés dans le coffre-fort documentaire
   uploads-data:
+  # Persistance des modèles LLM téléchargés par Ollama
+  ollama-data:
